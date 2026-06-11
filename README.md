@@ -1,34 +1,52 @@
 # BiliBili Sub Summary
 
-这个项目用于建立一个可复用的 B站视频分析工作流，覆盖：
+> 中文：面向人类和 Agent 的 B 站视频字幕、ASR、截图证据和结构化总结工作流。
+> English: A human- and agent-readable workflow for Bilibili subtitles, ASR fallback, visual evidence, and structured video summaries.
 
-- 人工提供链接
-- 账号相关来源：收藏、稍后再看、动态
-- 在线检索结果
-- 字幕缺失时的音频下载与本地 ASR
-- 画面依赖视频的低成本截图计划
-- 可迁移到 OpenCode、Hermes、Codex、Fedora、WSL 的 agent skill
+## What This Is / 这是什么
 
-项目目标不是保存账号态，而是稳定完成这条链路：
+中文：
 
-1. 找到值得分析的视频
-2. 检查并获取字幕
-3. 清洗为可分析文本
-4. 按视频类型输出结构化结果
-5. 对观点类默认使用 SFC
-6. 对视觉依赖视频补充少量关键截图证据
+这个项目把“给一个 B站视频链接 -> 获取字幕或转写 -> 必要时补关键截图 -> 输出总结/事实核查/反方观点”封装成可复用的 agent skill 和本地脚本。它尤其适合：
 
-## 输出类型
+- 工具教程：整理步骤、前置条件、坑点和排错路径。
+- 观点视频：用 SFC（Summary / Fact Check / Counter）做总结、事实核查和反方观点。
+- 信息视频：整理关键信息、时间线、行动清单和不确定性。
+- 视觉依赖视频：用少量关键截图补足字幕/ASR 看不到的图表、地图、UI、代码、排行榜、参数、路线等信息。
 
-- 工具类：操作步骤、前置条件、坑点、排错路径
-- 观点类：SFC（Summary / Fact Check / Counter）
-- 信息类：事实总结、建议、行动清单
+English:
 
-## 给 Agent 的一键安装
+This repository packages a reusable agent skill and local helper scripts for the workflow: Bilibili URL -> subtitles or ASR transcript -> targeted screenshots when needed -> structured summary, fact check, and counter-analysis. It is designed for:
 
-### Codex / 本地 skill
+- Tool/tutorial videos: steps, prerequisites, failure points, troubleshooting.
+- Argument videos: SFC summary, fact checking, counter-arguments, boundaries.
+- Informational videos: facts, timelines, action lists, uncertainty.
+- Visually dependent videos: low-cost screenshots for charts, maps, UI, code, rankings, parameters, routes, and other screen-only evidence.
 
-Windows PowerShell：
+## Workflow / 工作流图示
+
+```mermaid
+flowchart TD
+  A["Input: Bilibili URL, visible page, or transcript"] --> B["Collect page context: title, description, UP, comments"]
+  B --> C{"Subtitles available?"}
+  C -->|Yes| D["Download and normalize subtitles"]
+  C -->|No| E["Download public audio"]
+  E --> F["Local ASR with faster-whisper"]
+  D --> G{"Visual evidence needed?"}
+  F --> G
+  G -->|No| H["Classify: tool / argument / information"]
+  G -->|Yes| I["Plan 3-5 targeted screenshots"]
+  I --> J["Optional ffmpeg frame extraction"]
+  J --> H
+  H --> K["Summary + Fact Check + Counter / Boundaries"]
+  K --> L["State confidence, gaps, and next actions"]
+```
+
+## Quick Install For Agents / Agent 一键安装
+
+### Codex / OpenAI Codex Desktop
+
+Windows PowerShell:
 
 ```powershell
 git clone https://github.com/intKay/BiliBili-Sub-Summary.git
@@ -36,7 +54,7 @@ cd BiliBili-Sub-Summary
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install_skill.ps1
 ```
 
-Fedora / Linux / WSL：
+Fedora / Linux / WSL / macOS:
 
 ```bash
 git clone https://github.com/intKay/BiliBili-Sub-Summary.git
@@ -45,170 +63,171 @@ chmod +x ./install_skill.sh
 ./install_skill.sh
 ```
 
-默认安装位置：
+Default install path / 默认安装位置：
 
-- Windows：`$HOME\.codex\skills\bilibili-video-analysis`
-- Fedora / Linux / WSL：`$HOME/.codex/skills/bilibili-video-analysis`
-- 如果设置了 `CODEX_HOME`，则安装到 `$CODEX_HOME/skills/bilibili-video-analysis`
+- Windows: `$HOME\.codex\skills\bilibili-video-analysis`
+- Linux / macOS / WSL: `$HOME/.codex/skills/bilibili-video-analysis`
+- With `CODEX_HOME`: `$CODEX_HOME/skills/bilibili-video-analysis`
 
-安装后，在 agent 的新会话中请求“使用 bilibili-video-analysis skill 分析 B站视频”即可。
+After installation, start a new agent session and ask:
 
-### OpenCode / Hermes / 其他 Agent
+```text
+Use the bilibili-video-analysis skill to analyze this Bilibili video: <URL>
+```
 
-如果目标 Agent 不支持 Codex skill 自动发现：
+### OpenCode / Hermes / Claude Code / Gemini CLI / Cursor / Windsurf / Cline / Roo / Aider / Continue / Generic Agents
 
-1. 打开 [`skills/bilibili-video-analysis/PORTABLE_AGENT_PROMPT.md`](skills/bilibili-video-analysis/PORTABLE_AGENT_PROMPT.md)。
-2. 把其中代码块里的完整提示词复制到 OpenCode、Hermes 或其他 Agent 的 system prompt、project instruction、repository instruction 或 memory 中。
-3. 把本仓库的 `scripts/` 目录作为可选工具目录暴露给 Agent。
-4. 明确要求 Agent 遵守：没有字幕、截图、浏览器或联网能力时，必须向用户索要证据，不能伪造核查结果。
+If the target agent does not auto-discover Codex skills:
 
-推荐给 OpenCode / Hermes 的项目指令：
+1. Open [`skills/bilibili-video-analysis/PORTABLE_AGENT_PROMPT.md`](skills/bilibili-video-analysis/PORTABLE_AGENT_PROMPT.md).
+2. Copy the full prompt inside the code block into the agent's system prompt, project instructions, repository instructions, memory, rules, or custom instructions.
+3. Expose this repository's `scripts/` directory as optional tools when the agent can run shell commands.
+4. Tell the agent not to save cookies, SESSDATA, browser profiles, full logged-in HTML, or private account state.
+
+Copy-paste starter instruction:
 
 ```text
 Use the Bilibili video analysis workflow from skills/bilibili-video-analysis/PORTABLE_AGENT_PROMPT.md.
-Use scripts/ helpers when available. Do not save cookies, SESSDATA, browser profiles, full logged-in HTML, or private account state.
+Use scripts/ helpers when available.
+Do not save cookies, SESSDATA, browser profiles, full logged-in HTML, or private account state.
 Prefer subtitles, then ASR, then targeted screenshots for visually dependent videos.
 For claim-bearing videos, always include Fact Check and Counter / Boundaries.
+If evidence is missing, ask the user for transcript, screenshots, page context, or timestamps instead of inventing verification.
 ```
 
-## Python 环境配置
+## OS Setup Matrix / 操作系统配置矩阵
 
-Windows：
+| OS / 环境 | Install system packages / 安装系统依赖 | Python env / Python 环境 | Notes / 说明 |
+|---|---|---|---|
+| Windows 10/11 PowerShell | Install Python 3.11+ and optionally ffmpeg | `py -m venv .venv` then `.\.venv\Scripts\python.exe -m pip install -r requirements.txt` | Use `powershell -NoProfile -ExecutionPolicy Bypass -File .\install_skill.ps1` if `.ps1` execution is blocked. |
+| WSL Ubuntu/Debian | `sudo apt update && sudo apt install -y python3 python3-venv python3-pip ffmpeg` | `python3 -m venv .venv && . .venv/bin/activate && python -m pip install -r requirements.txt` | Best for Linux-style agent tooling on Windows. Keep repo on the Linux filesystem when possible for speed. |
+| Fedora | `sudo dnf install -y python3 python3-pip ffmpeg` | `python3 -m venv .venv && . .venv/bin/activate && python -m pip install -r requirements.txt` | If `ffmpeg` is unavailable, enable RPM Fusion or skip frame extraction and only generate screenshot plans. |
+| macOS | `brew install python ffmpeg` | `python3 -m venv .venv && . .venv/bin/activate && python -m pip install -r requirements.txt` | Homebrew is the simplest path. |
+| Arch / Manjaro | `sudo pacman -S python python-pip ffmpeg` | `python -m venv .venv && . .venv/bin/activate && python -m pip install -r requirements.txt` | Use `python` or `python3` depending on distro defaults. |
+| openSUSE | `sudo zypper install python3 python3-pip ffmpeg` | `python3 -m venv .venv && . .venv/bin/activate && python -m pip install -r requirements.txt` | Same shell scripts should work. |
+| Agent with no shell | No local packages | Copy `PORTABLE_AGENT_PROMPT.md` | Ask the user for transcript, page context, screenshots, or timestamps. Mark output as low evidence when needed. |
 
-```powershell
-py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
+`ffmpeg` is optional unless you want actual image frame extraction. The screenshot planner itself does not need `ffmpeg`.
 
-Fedora：
+`ffmpeg` 不是必须项；只有真正抽取视频关键帧时才需要。只生成截图计划不需要它。
 
-```bash
-sudo dnf install -y python3 python3-pip ffmpeg
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install -r requirements.txt
-```
+## Human Quick Start / 人类快速开始
 
-WSL：
-
-```bash
-sudo apt update
-sudo apt install -y python3 python3-venv python3-pip ffmpeg
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install -r requirements.txt
-```
-
-`ffmpeg` 只有在抽取关键帧或处理音视频时需要；只生成截图计划不需要。
-
-## 项目结构
-
-- [docs/workflow.md](docs/workflow.md)：完整工作流说明
-- [skills/bilibili-video-analysis/SKILL.md](skills/bilibili-video-analysis/SKILL.md)：可迁移为正式 Codex skill 的草案
-- [scripts/fetch_subtitles.py](scripts/fetch_subtitles.py)：字幕检查与下载
-- [scripts/fetch_bilibili_subtitles.py](scripts/fetch_bilibili_subtitles.py)：基于 Bilibili Evolved 实现思路的 B 站字幕脚本
-- [scripts/normalize_subtitles.py](scripts/normalize_subtitles.py)：`srt`/`vtt` 清洗为纯文本
-- [scripts/download_bilibili_audio.py](scripts/download_bilibili_audio.py)：无字幕时通过公开视频 API 下载 DASH 音频
-- [scripts/transcribe_audio.py](scripts/transcribe_audio.py)：无字幕时的 ASR 转写入口
-- [scripts/plan_visual_screenshots.py](scripts/plan_visual_screenshots.py)：视觉依赖视频的低成本截图计划与可选抽帧
-- [docs/visual-evidence.md](docs/visual-evidence.md)：截图时机和成本梯度
-- [docs/skill-packaging.md](docs/skill-packaging.md)：skill 封装、一键安装与跨 Agent 使用方式
-- [samples/video_candidates.md](samples/video_candidates.md)：真实试跑候选记录
-- [samples/runs/README.md](samples/runs/README.md)：试跑记录格式
-
-## 建议使用方式
-
-先拿 3-5 个真实链接试跑，确认字幕链路和输出质量，再考虑安装为正式本地 skill。
-
-### 1. 检查字幕
+### 1. Check subtitles / 检查字幕
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/fetch_subtitles.py list "https://www.bilibili.com/video/BV..."
 ```
 
-### 2. 下载字幕
+Linux/macOS/WSL:
+
+```bash
+python scripts/fetch_subtitles.py list "https://www.bilibili.com/video/BV..."
+```
+
+### 2. Download subtitles / 下载字幕
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/fetch_subtitles.py fetch "https://www.bilibili.com/video/BV..." --output-dir artifacts
 ```
 
-如需读取本机浏览器登录态但不落 cookie 文件：
+Temporary browser login state, without saving cookies / 临时读取浏览器登录态但不落 cookie 文件：
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/fetch_subtitles.py fetch "https://www.bilibili.com/video/BV..." --cookies-from-browser chrome
 ```
 
-### 3. 清洗字幕文本
+### 3. Normalize subtitles / 清洗字幕
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/normalize_subtitles.py artifacts/example.zh-Hans.srt --txt-out artifacts/example.clean.txt
 ```
 
-### 4. 无字幕时下载音频
+### 4. ASR fallback / 无字幕时下载音频并转写
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/download_bilibili_audio.py list "https://www.bilibili.com/video/BV..."
 .\.venv\Scripts\python.exe scripts/download_bilibili_audio.py fetch "https://www.bilibili.com/video/BV..." --output-dir artifacts/audio
-```
-
-该脚本不读取或保存 cookies，优先使用 B站公开视频 API 的 DASH 音频流。
-多 P 视频可加 `--page 1` 指定分 P。
-
-### 5. 无字幕时转写音频
-
-```powershell
 .\.venv\Scripts\python.exe scripts/transcribe_audio.py artifacts/audio/example.m4a --provider faster-whisper --language zh
 ```
 
-`transcribe_audio.py` 会优先使用本地 `artifacts/models/faster-whisper-small`，没有时再退回 `base` / `tiny`。如果要强制使用某个模型，可以加：
+Language rules / 语言参数：
 
-```powershell
---model artifacts/models/faster-whisper-base
-```
+- Chinese video: `--language zh`
+- English video: `--language en`
+- Unknown or mixed: omit `--language`
 
-### 6. 视觉依赖视频生成截图计划
+### 5. Visual evidence / 视觉依赖视频截图计划
+
+Generate a low-cost screenshot plan:
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/plan_visual_screenshots.py artifacts/example.srt --plan-out artifacts/example.visual-plan.md
 ```
 
-如果已经有本地视频文件并安装了 `ffmpeg`，可按计划抽关键帧：
+Extract only planned frames when a local video file and `ffmpeg` are available:
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/plan_visual_screenshots.py artifacts/example.srt --video artifacts/video/example.mp4 --extract --frames-dir artifacts/frames/example
 ```
 
-### 7. 安装为本地 skill
+## Agent Output Rules / Agent 输出规则
 
-Windows:
+Agents should always report:
 
-```powershell
-.\install_skill.ps1
-```
+- Transcript source: official subtitles, auto subtitles, ASR, or user-provided text.
+- Page context: title, description, UP name, pinned/high-like comments when available.
+- Visual evidence: whether screenshots were used, how many, and which timestamps.
+- Confidence and gaps: what is verified, uncertain, or needs rewatching.
+- Counter / Boundaries for claim-bearing videos.
 
-Linux/macOS:
+Agent 必须区分：
 
-```bash
-chmod +x ./install_skill.sh
-./install_skill.sh
-```
+- `video says`：视频里说了什么。
+- `verified`：已被外部可靠来源验证。
+- `uncertain`：ASR、截图或上下文不足。
+- `needs evidence`：需要用户补字幕、截图、页面信息或时间戳。
 
-## 当前状态
+## Repository Structure / 项目结构
 
-- 已迁移工作流文档与 skill 草案
-- 已补字幕检查/下载与清洗脚本
-- 已完成第一轮真实 B站链接检索与字幕可用性验证，记录见 [samples/runs/2026-06-10-initial-validation.md](samples/runs/2026-06-10-initial-validation.md)
-- 项目内 `.venv` 已安装 `yt-dlp`
-- 当前主要阻塞不是安装，而是 B站字幕登录态与本机 DPAPI 解密失败
-- 已补基于 `Bilibili Evolved` 思路的独立字幕脚本，说明见 [docs/bilibili-subtitle-implementation.md](docs/bilibili-subtitle-implementation.md)
-- 已补 ASR 兜底脚本与成本说明，见 [docs/asr-fallback.md](docs/asr-fallback.md)
-- 已打通真实链路 `BV -> DASH 音频 -> 本地 faster-whisper 转写`，记录见 [samples/runs/2026-06-10-bv-audio-asr-validation.md](samples/runs/2026-06-10-bv-audio-asr-validation.md)
-- 已完成模型升级对比，真实视频默认推荐 `faster-whisper-small`，记录见 [samples/runs/2026-06-10-asr-model-accuracy-upgrade.md](samples/runs/2026-06-10-asr-model-accuracy-upgrade.md)
-- 已完成三个真实视频测试，记录见 [samples/runs/2026-06-10-three-video-asr-validation.md](samples/runs/2026-06-10-three-video-asr-validation.md)
+- [`docs/workflow.md`](docs/workflow.md): full workflow.
+- [`docs/account-source-roadmap.md`](docs/account-source-roadmap.md): account-adjacent sources, temporary browser state, visible-page extraction, batch roadmap.
+- [`docs/visual-evidence.md`](docs/visual-evidence.md): low-cost screenshot timing and escalation rules.
+- [`docs/skill-packaging.md`](docs/skill-packaging.md): packaging and installation details.
+- [`docs/install-test-matrix.md`](docs/install-test-matrix.md): tested install paths and portability notes.
+- [`docs/asr-fallback.md`](docs/asr-fallback.md): ASR fallback notes.
+- [`AGENTS.md`](AGENTS.md), [`CLAUDE.md`](CLAUDE.md), [`GEMINI.md`](GEMINI.md), [`.cursorrules`](.cursorrules): lightweight pointers for common agent tools.
+- [`skills/bilibili-video-analysis/SKILL.md`](skills/bilibili-video-analysis/SKILL.md): Codex-style skill.
+- [`skills/bilibili-video-analysis/PORTABLE_AGENT_PROMPT.md`](skills/bilibili-video-analysis/PORTABLE_AGENT_PROMPT.md): portable prompt for other agents.
+- [`scripts/fetch_subtitles.py`](scripts/fetch_subtitles.py): subtitle listing and download wrapper.
+- [`scripts/fetch_bilibili_subtitles.py`](scripts/fetch_bilibili_subtitles.py): Bilibili subtitle helper based on Bilibili Evolved metadata flow.
+- [`scripts/normalize_subtitles.py`](scripts/normalize_subtitles.py): SRT/VTT to clean text.
+- [`scripts/download_bilibili_audio.py`](scripts/download_bilibili_audio.py): public DASH audio downloader.
+- [`scripts/transcribe_audio.py`](scripts/transcribe_audio.py): local faster-whisper ASR entry.
+- [`scripts/plan_visual_screenshots.py`](scripts/plan_visual_screenshots.py): screenshot planner and optional ffmpeg frame extraction.
+- [`samples/runs/`](samples/runs): validation notes from real runs.
 
-## 安全边界
+## Safety Boundaries / 安全边界
 
-- 不在项目内保存 cookies、SESSDATA、浏览器 profile 或完整登录页面缓存
-- 只记录视频链接、标题、字幕来源、分析结果和必要的时间戳
-- 下载得到的字幕和中间产物默认放在 `artifacts/`，并保持不提交
-- 第三方源码镜像 `vendor/` 默认不提交；需要溯源时优先引用上游项目链接或文档说明
+Do not commit or save:
+
+- cookies, SESSDATA, exported cookie jars;
+- browser profiles or full logged-in HTML snapshots;
+- private messages, account settings, personal notification pages;
+- audio/video/subtitle/transcript artifacts from private sources unless the user explicitly approves and the files remain local;
+- raw `artifacts/`, `.venv/`, `vendor/`, caches, or model files.
+
+Allowed by default:
+
+- public video URLs, titles, UP names, visible stats;
+- downloaded public subtitles and local ASR outputs in ignored `artifacts/`;
+- summary documents, timestamps, evidence notes, and reproducible scripts.
+
+## Current Status / 当前状态
+
+- Subtitle check/download scripts are present.
+- Public audio download and local faster-whisper ASR fallback are present.
+- Low-cost visual screenshot planning is present.
+- Codex-style skill and portable prompt are present.
+- Account-source roadmap exists, but persistent account credential handling is intentionally out of scope.
+- Validation notes live in [`samples/runs/`](samples/runs).

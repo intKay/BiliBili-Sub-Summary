@@ -1,0 +1,17 @@
+artifacts/
+.venv/
+vendor/
+__pycache__/
+*.py[cod]
+*.cookies
+*.cookie
+cookies.txt
+cookiejar.txt
+*.mp3
+*.m4a
+*.wav
+*.srt
+*.vtt
+*.ass
+*.json
+*.log
